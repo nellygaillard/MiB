@@ -1,7 +1,7 @@
 import torch
 from torch import distributed
 import torch.nn as nn
-from apex import amp
+#from apex import amp
 from functools import reduce
 
 from utils.loss import KnowledgeDistillationLoss, BCEWithLogitsLossWithIgnoreIndex, \
@@ -124,8 +124,8 @@ class Trainer:
             # xxx first backprop of previous loss (compute the gradients for regularization methods)
             loss_tot = loss + lkd + lde + l_icarl
 
-            with amp.scale_loss(loss_tot, optim) as scaled_loss:
-                scaled_loss.backward()
+            with torch.cuda.amp.autocast():
+                loss_tot.backward()
 
             # xxx Regularizer (EWC, RW, PI)
             if self.regularizer_flag:
@@ -133,8 +133,8 @@ class Trainer:
                     self.regularizer.update()
                 l_reg = self.reg_importance * self.regularizer.penalty()
                 if l_reg != 0.:
-                    with amp.scale_loss(l_reg, optim) as scaled_loss:
-                        scaled_loss.backward()
+                    with torch.cuda.amp.autocast():
+                        l_reg.backward()
 
             optim.step()
             if scheduler is not None:
