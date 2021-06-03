@@ -3,27 +3,35 @@ import torch.nn as nn
 from torch import distributed
 import torch.nn.functional as functional
 
-import inplace_abn
-from inplace_abn import InPlaceABNSync, InPlaceABN, ABN
+#import inplace_abn
+#from inplace_abn import InPlaceABNSync, InPlaceABN, ABN
 
 from functools import partial, reduce
 
 import models
-from modules import DeeplabV3
+from model.build_BiSeNet import BiSeNet
+import os
 
 
 def make_model(opts, classes=None):
-    if opts.norm_act == 'iabn_sync':
-        norm = partial(InPlaceABNSync, activation="leaky_relu", activation_param=.01)
-    elif opts.norm_act == 'iabn':
-        norm = partial(InPlaceABN, activation="leaky_relu", activation_param=.01)
-    elif opts.norm_act == 'abn':
-        norm = partial(ABN, activation="leaky_relu", activation_param=.01)
-    else:
-        norm = nn.BatchNorm2d  # not synchronized, can be enabled with apex
-
-    body = models.__dict__[f'net_{opts.backbone}'](norm_act=norm, output_stride=opts.output_stride)
-    if not opts.no_pretrained:
+    
+    #if opts.norm_act == 'iabn_sync':
+    #    norm = partial(InPlaceABNSync, activation="leaky_relu", activation_param=.01)
+    #elif opts.norm_act == 'iabn':
+    #    norm = partial(InPlaceABN, activation="leaky_relu", activation_param=.01)
+    #elif opts.norm_act == 'abn':
+    #    norm = partial(ABN, activation="leaky_relu", activation_param=.01)
+    #else:
+    #    norm = nn.BatchNorm2d  # not synchronized, can be enabled with apex
+    
+    
+    # build model
+    
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    num_classes = reduce(lambda a,b: a+b, self.classes)
+    
+    
+    if not opts.no_pretrained:      # if we have a pretrained model
         pretrained_path = f'pretrained/{opts.backbone}_{opts.norm_act}.pth.tar'
         pre_dict = torch.load(pretrained_path, map_location='cpu')
         del pre_dict['state_dict']['classifier.fc.weight']
@@ -34,13 +42,16 @@ def make_model(opts, classes=None):
 
     head_channels = 256
 
-    head = DeeplabV3(body.out_channels, head_channels, 256, norm_act=norm,
-                     out_stride=opts.output_stride, pooling_size=opts.pooling)
-
     if classes is not None:
-        model = IncrementalSegmentationModule(body, head, head_channels, classes=classes, fusion_mode=opts.fusion_mode)
+        model = BiSeNet(num_classes, opts.backbone)
+        if torch.cuda.is_available():
+            model = torch.nn.DataParallel(model).cuda()
+        model2 = IncrementalSegmentationModule(model, 256, classes=classes, fusion_mode=opts.fusion_mode)
     else:
-        model = SegmentationModule(body, head, head_channels, opts.num_classes, opts.fusion_mode)
+        model = BiSeNet(num_classes, opts.backbone)
+        if torch.cuda.is_available():
+            model = torch.nn.DataParallel(model).cuda()
+        model2 = SegmentationModule(model, 256, opts.num_classes, opts.fusion_mode)
 
     return model
 
@@ -54,13 +65,14 @@ def flip(x, dim):
 
 class IncrementalSegmentationModule(nn.Module):
 
-    def __init__(self, body, head, head_channels, classes, ncm=False, fusion_mode="mean"):
+    def __init__(self, model, head_channels, classes, ncm=False, fusion_mode="mean"):
         super(IncrementalSegmentationModule, self).__init__()
-        self.body = body
-        self.head = head
+        self.model = model
+        
         # classes must be a list where [n_class_task[i] for i in tasks]
         assert isinstance(classes, list), \
             "Classes must be a list where to every index correspond the num of classes for that task"
+        
         self.cls = nn.ModuleList(
             [nn.Conv2d(head_channels, c, 1) for c in classes]
         )
@@ -71,15 +83,14 @@ class IncrementalSegmentationModule(nn.Module):
 
     def _network(self, x, ret_intermediate=False):
 
-        x_b = self.body(x)
-        x_pl = self.head(x_b)
+        x_net = self.model(x)
         out = []
         for mod in self.cls:
-            out.append(mod(x_pl))
+            out.append(mod(x_net))
         x_o = torch.cat(out, dim=1)
 
         if ret_intermediate:
-            return x_o, x_b,  x_pl
+            return x_o, x_net
         return x_o
 
     def init_new_classifier(self, device):
