@@ -46,7 +46,7 @@ def get_per_task_classes(dataset, name, step):
         task_dict = tasks_voc[name]
     else:
         raise NotImplementedError
-    asser step in task_dict.keys(), f"You should provide a valid step! [{step} is out of range]"
+    assert step in task_dict.keys(), f"You should provide a valid step! [{step} is out of range]"
 
     classes = [len(task_dict[s]) for s in range(step+1)]
     return classes
