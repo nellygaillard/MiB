@@ -53,8 +53,9 @@ class FeatureFusionModule(torch.nn.Module):
     def __init__(self, num_classes, in_channels):
         super().__init__()
         # self.in_channels = input_1.channels + input_2.channels
-        # resnet101 3328 = 256(from context path) + 1024(from spatial path) + 2048(from spatial path)
-        # resnet18  1024 = 256(from context path) + 256(from spatial path) + 512(from spatial path)
+        # resnet101 3328 = 256(from spatial path) + 1024(from context path) + 2048(from context path)
+        # resnet18  1024 = 256(from spatial path) + 256(from context path) + 512(from context path)
+        # resnet50 3328 = 256(from spatial path) + 1024(from context path) + 2048(from context path)
         self.in_channels = in_channels
 
         self.convblock = ConvBlock(in_channels=self.in_channels, out_channels=num_classes, stride=1)
@@ -95,7 +96,8 @@ class BiSeNet(torch.nn.Module):
             self.supervision2 = nn.Conv2d(in_channels=2048, out_channels=num_classes, kernel_size=1)
             # build feature fusion module
             self.feature_fusion_module = FeatureFusionModule(num_classes, 3328)
-        
+
+        # build attention refinement module  for resnet 50
         elif context_path == 'resnet50':
             self.attention_refinement_module1 = AttentionRefinementModule(1024, 1024)
             self.attention_refinement_module2 = AttentionRefinementModule(2048, 2048)
@@ -167,7 +169,7 @@ class BiSeNet(torch.nn.Module):
 
         # upsampling
         result = torch.nn.functional.interpolate(result, scale_factor=8, mode='bilinear')
-        result = self.conv(result)
+        result = self.conv(result)          # final convolution == actual classifier
 
         if self.training == True:
             return result, cx1_sup, cx2_sup

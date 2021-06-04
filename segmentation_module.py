@@ -26,7 +26,6 @@ def make_model(opts, classes=None):
     
     
     # build model
-    
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     num_classes = reduce(lambda a,b: a+b, self.classes)
     
@@ -72,7 +71,8 @@ class IncrementalSegmentationModule(nn.Module):
         # classes must be a list where [n_class_task[i] for i in tasks]
         assert isinstance(classes, list), \
             "Classes must be a list where to every index correspond the num of classes for that task"
-        
+
+        # list of classifiers
         self.cls = nn.ModuleList(
             [nn.Conv2d(head_channels, c, 1) for c in classes]
         )

@@ -5,7 +5,7 @@ from utils.logger import Logger
 
 #from apex.parallel import DistributedDataParallel
 #from apex import amp
-from torch.utils.data.distributed import DistributedSampler
+#from torch.utils.data.distributed import DistributedSampler
 
 import numpy as np
 import random
@@ -102,10 +102,10 @@ def get_dataset(opts):
 
 
 def main(opts):
-    distributed.init_process_group(backend='nccl', init_method='env://')
-    device_id, device = opts.local_rank, torch.device(opts.local_rank)
-    rank, world_size = distributed.get_rank(), distributed.get_world_size()
-    torch.cuda.set_device(device_id)
+    #distributed.init_process_group(backend='nccl', init_method='env://')
+    #device_id, device = opts.local_rank, torch.device(opts.local_rank)
+    #rank, world_size = distributed.get_rank(), distributed.get_world_size()
+    #torch.cuda.set_device(device_id)
 
     # Initialize logging
     task_name = f"{opts.task}-{opts.dataset}"
@@ -125,6 +125,7 @@ def main(opts):
 
     # xxx Set up dataloader
     train_dst, val_dst, test_dst, n_classes = get_dataset(opts)
+
     # reset the seed, this revert changes in random seed
     random.seed(opts.random_seed)
 
@@ -143,6 +144,7 @@ def main(opts):
 
     step_checkpoint = None
     model = make_model(opts, classes=tasks.get_per_task_classes(opts.dataset, opts.task, opts.step))
+
     logger.info(f"[!] Model made with{'out' if opts.no_pretrained else ''} pre-trained")
 
     if opts.step == 0:  # if step 0, we don't need to instance the model_old
