@@ -78,8 +78,8 @@ class FeatureFusionModule(torch.nn.Module):
         x = torch.add(x, feature)
         return x
 
-class BiSeNet(torch.nn.Module):
-    def __init__(self, num_classes, context_path):
+class IncrementalBiSeNet(torch.nn.Module):
+    def __init__(self, classes, context_path):
         super().__init__()
         # build spatial path
         self.saptial_path = Spatial_path()
@@ -92,35 +92,56 @@ class BiSeNet(torch.nn.Module):
             self.attention_refinement_module1 = AttentionRefinementModule(1024, 1024)
             self.attention_refinement_module2 = AttentionRefinementModule(2048, 2048)
             # supervision block
-            self.supervision1 = nn.Conv2d(in_channels=1024, out_channels=num_classes, kernel_size=1)
-            self.supervision2 = nn.Conv2d(in_channels=2048, out_channels=num_classes, kernel_size=1)
+            self.supervision1 = nn.ModuleList(
+                [nn.Conv2d(in_channels=1024, out_channels=c, kernel_size=1) for c in classes])
+            self.supervision2 = nn.ModuleList(
+                [nn.Conv2d(in_channels=2048, out_channels=c, kernel_size=1) for c in classes])
             # build feature fusion module
-            self.feature_fusion_module = FeatureFusionModule(num_classes, 3328)
+            self.FFM = nn.ModuleList(
+                [self.FeatureFusionModule(c, 3328) for c in classes]
+            )
+            # self.feature_fusion_module = FeatureFusionModule(num_classes, 3328)
 
         # build attention refinement module  for resnet 50
         elif context_path == 'resnet50':
             self.attention_refinement_module1 = AttentionRefinementModule(1024, 1024)
             self.attention_refinement_module2 = AttentionRefinementModule(2048, 2048)
             # supervision block
-            self.supervision1 = nn.Conv2d(in_channels=1024, out_channels=num_classes, kernel_size=1)
-            self.supervision2 = nn.Conv2d(in_channels=2048, out_channels=num_classes, kernel_size=1)
+            self.supervision1 = nn.ModuleList(
+                [nn.Conv2d(in_channels=1024, out_channels=c, kernel_size=1) for c in classes])
+            self.supervision2 = nn.ModuleList(
+                [nn.Conv2d(in_channels=2048, out_channels=c, kernel_size=1) for c in classes])
             # build feature fusion module
-            self.feature_fusion_module = FeatureFusionModule(num_classes, 3328)
+            self.FFM = nn.ModuleList(
+                [self.FeatureFusionModule(c, 3328) for c in classes]
+            )
+            # self.feature_fusion_module = FeatureFusionModule(num_classes, 3328)
 
         elif context_path == 'resnet18':
             # build attention refinement module  for resnet 18
             self.attention_refinement_module1 = AttentionRefinementModule(256, 256)
             self.attention_refinement_module2 = AttentionRefinementModule(512, 512)
             # supervision block
-            self.supervision1 = nn.Conv2d(in_channels=256, out_channels=num_classes, kernel_size=1)
-            self.supervision2 = nn.Conv2d(in_channels=512, out_channels=num_classes, kernel_size=1)
+            self.supervision1 = nn.ModuleList(
+                [nn.Conv2d(in_channels=256, out_channels=c, kernel_size=1) for c in classes])
+            self.supervision2 = nn.ModuleList(
+                [nn.Conv2d(in_channels=512, out_channels=c, kernel_size=1) for c in classes])
+
             # build feature fusion module
-            self.feature_fusion_module = FeatureFusionModule(num_classes, 1024)
+            #self.feature_fusion_module = FeatureFusionModule(num_classes, 1024)
+            self.FFM = nn.ModuleList(
+                [self.FeatureFusionModule(c, 1024) for c in classes]
+            )
         else:
             print('Error: unspport context_path network \n')
 
+
+        # build final list of classifiers
+        self.cls = nn.ModuleList(
+            [nn.Conv2d(head_channels, c, 1) for c in classes]
+        )
         # build final convolution
-        self.conv = nn.Conv2d(in_channels=num_classes, out_channels=num_classes, kernel_size=1)
+        # self.conv = nn.Conv2d(in_channels=num_classes, out_channels=num_classes, kernel_size=1)
 
         self.init_weight()
 
@@ -145,6 +166,9 @@ class BiSeNet(torch.nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def forward(self, input):
+
+        out_size = input.shape[-2:]     # aggiunto in prova per interpolazione finale
+
         # output of spatial path
         sx = self.saptial_path(input)
 
@@ -159,22 +183,43 @@ class BiSeNet(torch.nn.Module):
         cx = torch.cat((cx1, cx2), dim=1)
 
         if self.training == True:
-            cx1_sup = self.supervision1(cx1)
-            cx2_sup = self.supervision2(cx2)
+            cx1_sup_l = []
+            for mod in self.supervision1:
+                cx1_sup_l.append(mod(cx1))
+            cx1_sup = torch.cat(cx1_sup_l, dim=1)
+            #cx1_sup = self.supervision1(cx1)
+            cx2_sup_list = []
+            for mod in self.supervision2:
+                cx2_sup_list.append(mod(cx2))
+            cx2_sup = torch.cat(cx2_sup_list, dim=1)
+
+            #cx2_sup = self.supervision2(cx2)
             cx1_sup = torch.nn.functional.interpolate(cx1_sup, size=input.size()[-2:], mode='bilinear')
             cx2_sup = torch.nn.functional.interpolate(cx2_sup, size=input.size()[-2:], mode='bilinear')
 
         # output of feature fusion module
-        result = self.feature_fusion_module(sx, cx)
+        result_list = []
+        for mod in self.FFM:
+            result_list.append(mod(sx, cx))
+        result = torch.cat(result_list, dim=1)      # dimensions: (batch_size, classes, height, width)
+        #result = self.feature_fusion_module(sx, cx)
 
         # upsampling
         result = torch.nn.functional.interpolate(result, scale_factor=8, mode='bilinear')
-        result = self.conv(result)          # final convolution == actual classifier
+
+        out = []
+        for mod in self.cls:
+            out.append(mod(result))
+        out_result = torch.cat(out, dim=1)
+
+        # result = self.conv(result)          # final convolution == actual classifier
+
+        out_result = functional.interpolate(out_result, size=out_size, mode="bilinear", align_corners=False)
 
         if self.training == True:
-            return result, cx1_sup, cx2_sup
+            return out_result, cx1_sup, cx2_sup
 
-        return result
+        return out_result
 
 
 if __name__ == '__main__':
