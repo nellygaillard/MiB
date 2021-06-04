@@ -104,7 +104,7 @@ def get_dataset(opts):
 def main(opts):
     #distributed.init_process_group(backend='nccl', init_method='env://')
     #device_id, device = opts.local_rank, torch.device(opts.local_rank)
-    #rank, world_size = distributed.get_rank(), distributed.get_world_size()
+    rank, world_size = 0, distributed.get_world_size()
     #torch.cuda.set_device(device_id)
 
     # Initialize logging
@@ -125,6 +125,26 @@ def main(opts):
 
     # xxx Set up dataloader
     train_dst, val_dst, test_dst, n_classes = get_dataset(opts)
+
+
+    # ----------------
+    dataset_train = VOC(train_path, image_set="train", transform=train_transform)
+    dataloader_train = DataLoader(
+        dataset_train,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        drop_last=True
+    )
+    dataset_val = VOC(train_path, image_set="val", transform=val_transform)
+    dataloader_val = DataLoader(
+        dataset_val,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers
+    )
+
+    # ----------------
 
     # reset the seed, this revert changes in random seed
     random.seed(opts.random_seed)
