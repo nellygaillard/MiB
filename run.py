@@ -126,35 +126,25 @@ def main(opts):
     # xxx Set up dataloader
     train_dst, val_dst, test_dst, n_classes = get_dataset(opts)
 
-
-    # ----------------
-    dataset_train = VOC(train_path, image_set="train", transform=train_transform)
-    dataloader_train = DataLoader(
-        dataset_train,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        drop_last=True
-    )
-    dataset_val = VOC(train_path, image_set="val", transform=val_transform)
-    dataloader_val = DataLoader(
-        dataset_val,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers
-    )
-
-    # ----------------
-
     # reset the seed, this revert changes in random seed
     random.seed(opts.random_seed)
 
-    train_loader = data.DataLoader(train_dst, batch_size=opts.batch_size,
-                                   sampler=DistributedSampler(train_dst, num_replicas=world_size, rank=rank),
-                                   num_workers=opts.num_workers, drop_last=True)
-    val_loader = data.DataLoader(val_dst, batch_size=opts.batch_size if opts.crop_val else 1,
-                                 sampler=DistributedSampler(val_dst, num_replicas=world_size, rank=rank),
-                                 num_workers=opts.num_workers)
+    # ----------------
+    dataloader_train = data.DataLoader(
+        train_dst,
+        batch_size=opts.batch_size,
+        shuffle=True,
+        num_workers=opts.num_workers,
+        drop_last=True
+    )
+    dataloader_val = data.DataLoader(
+        val_dst,
+        batch_size=opts.batch_size,
+        shuffle=True,
+        num_workers=opts.num_workers
+    )
+    # ----------------
+
     logger.info(f"Dataset: {opts.dataset}, Train set: {len(train_dst)}, Val set: {len(val_dst)},"
                 f" Test set: {len(test_dst)}, n_classes {n_classes}")
     logger.info(f"Total batch size is {opts.batch_size * world_size}")
