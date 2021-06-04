@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from model.build_contextpath import build_contextpath
 import warnings
+
 warnings.filterwarnings(action='ignore')
 
 class ConvBlock(torch.nn.Module):
@@ -98,7 +99,7 @@ class IncrementalBiSeNet(torch.nn.Module):
                 [nn.Conv2d(in_channels=2048, out_channels=c, kernel_size=1) for c in classes])
             # build feature fusion module
             self.FFM = nn.ModuleList(
-                [self.FeatureFusionModule(c, 3328) for c in classes]
+                [FeatureFusionModule(c, 3328) for c in classes]
             )
             # self.feature_fusion_module = FeatureFusionModule(num_classes, 3328)
 
@@ -113,7 +114,7 @@ class IncrementalBiSeNet(torch.nn.Module):
                 [nn.Conv2d(in_channels=2048, out_channels=c, kernel_size=1) for c in classes])
             # build feature fusion module
             self.FFM = nn.ModuleList(
-                [self.FeatureFusionModule(c, 3328) for c in classes]
+                [FeatureFusionModule(c, 3328) for c in classes]
             )
             # self.feature_fusion_module = FeatureFusionModule(num_classes, 3328)
 
@@ -130,7 +131,7 @@ class IncrementalBiSeNet(torch.nn.Module):
             # build feature fusion module
             #self.feature_fusion_module = FeatureFusionModule(num_classes, 1024)
             self.FFM = nn.ModuleList(
-                [self.FeatureFusionModule(c, 1024) for c in classes]
+                [FeatureFusionModule(c, 1024) for c in classes]
             )
         else:
             print('Error: unspport context_path network \n')
@@ -138,7 +139,7 @@ class IncrementalBiSeNet(torch.nn.Module):
 
         # build final list of classifiers
         self.cls = nn.ModuleList(
-            [nn.Conv2d(head_channels, c, 1) for c in classes]
+            [nn.Conv2d(c, c, 1) for c in classes]
         )
         # build final convolution
         # self.conv = nn.Conv2d(in_channels=num_classes, out_channels=num_classes, kernel_size=1)
@@ -151,8 +152,8 @@ class IncrementalBiSeNet(torch.nn.Module):
         self.mul_lr.append(self.attention_refinement_module2)
         self.mul_lr.append(self.supervision1)
         self.mul_lr.append(self.supervision2)
-        self.mul_lr.append(self.feature_fusion_module)
-        self.mul_lr.append(self.conv)
+        self.mul_lr.append(self.FFM)
+        self.mul_lr.append(self.cls)
 
     def init_weight(self):
         for name, m in self.named_modules():
@@ -214,12 +215,12 @@ class IncrementalBiSeNet(torch.nn.Module):
 
         # result = self.conv(result)          # final convolution == actual classifier
 
-        out_result = functional.interpolate(out_result, size=out_size, mode="bilinear", align_corners=False)
+        out_result = torch.nn.functional.interpolate(out_result, size=out_size, mode="bilinear", align_corners=False)
 
         if self.training == True:
             return out_result, cx1_sup, cx2_sup
 
-        return out_result
+        return out_result, {}
 
 
 if __name__ == '__main__':

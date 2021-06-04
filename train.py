@@ -1,5 +1,4 @@
 import torch
-from torch import distributed
 import torch.nn as nn
 #from apex import amp
 from functools import reduce
@@ -10,11 +9,10 @@ from utils import get_regularizer
 
 
 class Trainer:
-    def __init__(self, model, model_old, device, opts, trainer_state=None, classes=None):
+    def __init__(self, model, model_old, opts, trainer_state=None, classes=None):
 
         self.model_old = model_old
         self.model = model
-        self.device = device
 
         if classes is not None:
             new_classes = classes[-1]
@@ -61,7 +59,7 @@ class Trainer:
 
         # Regularization
         regularizer_state = trainer_state['regularizer'] if trainer_state is not None else None
-        self.regularizer = get_regularizer(model, model_old, device, opts, regularizer_state)
+        self.regularizer = get_regularizer(model, model_old, opts, regularizer_state)
         self.regularizer_flag = self.regularizer is not None
         self.reg_importance = opts.reg_importance
 
@@ -71,7 +69,6 @@ class Trainer:
         """Train and return epoch loss"""
         logger.info("Epoch %d, lr = %f" % (cur_epoch, optim.param_groups[0]['lr']))
 
-        device = self.device
         model = self.model
         criterion = self.criterion
 
@@ -83,20 +80,20 @@ class Trainer:
         l_icarl = torch.tensor(0.)
         l_reg = torch.tensor(0.)
 
-        train_loader.sampler.set_epoch(cur_epoch)
+        #train_loader.sampler.set_epoch(cur_epoch)
 
         model.train()
         for cur_step, (images, labels) in enumerate(train_loader):
 
-            images = images.to(device, dtype=torch.float32)
-            labels = labels.to(device, dtype=torch.long)
+            images = images.cuda()
+            labels = labels.cuda().long()
 
             if (self.lde_flag or self.lkd_flag or self.icarl_dist_flag) and self.model_old is not None:
                 with torch.no_grad():
-                    outputs_old, features_old = self.model_old(images, ret_intermediate=self.ret_intermediate)
+                    outputs_old, output_sup1_old, output_sup2_old = self.model_old(images)
 
             optim.zero_grad()
-            outputs, features = model(images, ret_intermediate=self.ret_intermediate)
+            outputs, output_sup1, output_sup2 = model(images)
 
             # xxx BCE / Cross Entropy Loss
             if not self.icarl_only_dist:
@@ -158,15 +155,15 @@ class Trainer:
                 interval_loss = 0.0
 
         # collect statistics from multiple processes
-        epoch_loss = torch.tensor(epoch_loss).to(self.device)
-        reg_loss = torch.tensor(reg_loss).to(self.device)
+        epoch_loss = torch.tensor(epoch_loss).cuda()
+        reg_loss = torch.tensor(reg_loss).cuda()
 
         torch.distributed.reduce(epoch_loss, dst=0)
         torch.distributed.reduce(reg_loss, dst=0)
 
         if distributed.get_rank() == 0:
-            epoch_loss = epoch_loss / distributed.get_world_size() / len(train_loader)
-            reg_loss = reg_loss / distributed.get_world_size() / len(train_loader)
+            epoch_loss = epoch_loss / len(train_loader) # !!!
+            reg_loss = reg_loss / len(train_loader)     # !!!
 
         logger.info(f"Epoch {cur_epoch}, Class Loss={epoch_loss}, Reg Loss={reg_loss}")
 
@@ -176,7 +173,7 @@ class Trainer:
         """Do validation and return specified samples"""
         metrics.reset()
         model = self.model
-        device = self.device
+        #device = self.device
         criterion = self.criterion
         model.eval()
 
@@ -191,14 +188,18 @@ class Trainer:
         with torch.no_grad():
             for i, (images, labels) in enumerate(loader):
 
-                images = images.to(device, dtype=torch.float32)
-                labels = labels.to(device, dtype=torch.long)
+                images = images.cuda()
+                labels = labels.cuda().long()
 
                 if (self.lde_flag or self.lkd_flag or self.icarl_dist_flag) and self.model_old is not None:
                     with torch.no_grad():
-                        outputs_old, features_old = self.model_old(images, ret_intermediate=True)
+                        outputs_old, loss1_old, loss2_old = self.model_old(images)
 
-                outputs, features = model(images, ret_intermediate=True)
+                outputs, output_sup1, output_sup2 = model(images)
+                #loss1 = loss_func(output, label)
+                #loss2 = loss_func(output_sup1, label)
+                #loss3 = loss_func(output_sup2, label)
+                #loss = loss1 + loss2 + loss3
 
                 # xxx BCE / Cross Entropy Loss
                 if not self.icarl_only_dist:
@@ -245,15 +246,15 @@ class Trainer:
             metrics.synch(device)
             score = metrics.get_results()
 
-            class_loss = torch.tensor(class_loss).to(self.device)
-            reg_loss = torch.tensor(reg_loss).to(self.device)
+            class_loss = torch.tensor(class_loss).cuda()
+            reg_loss = torch.tensor(reg_loss).cuda()
 
             torch.distributed.reduce(class_loss, dst=0)
             torch.distributed.reduce(reg_loss, dst=0)
 
             if distributed.get_rank() == 0:
-                class_loss = class_loss / distributed.get_world_size() / len(loader)
-                reg_loss = reg_loss / distributed.get_world_size() / len(loader)
+                class_loss = class_loss / len(loader)   # !!
+                reg_loss = reg_loss / len(loader)       # !!
 
             if logger is not None:
                 logger.info(f"Validation, Class Loss={class_loss}, Reg Loss={reg_loss} (without scaling)")

@@ -4,8 +4,9 @@ from copy import deepcopy
 EPS = 1e-8
 
 
-def get_regularizer(model, model_old, device, opts, old_state):
+def get_regularizer(model, model_old, opts, old_state):
     resume = False
+    device = None
     name = opts.regularizer
     if old_state is not None:
         if name != old_state['name']:
@@ -82,8 +83,8 @@ class EWC(Regularizer):
             for key, par in self.fisher_old.items():
                 self.fisher_old[key].requires_grad = False
                 self.fisher_old[key] = normalize_fn(par) if normalize else par
-                self.fisher_old[key] = self.fisher_old[key].to(device)
-                self.fisher[key] = torch.clone(par).to(device)
+                self.fisher_old[key] = self.fisher_old[key].cuda()
+                self.fisher[key] = torch.clone(par).cuda()
         else:  # initialize a new Fisher Matrix and don't penalize, we miss an information
             self.fisher_old = None
             self.penalize = False
@@ -119,7 +120,7 @@ class EWC(Regularizer):
         assert state['name'] == 'ewc', f"Error, you are trying to restore {state['name']} into ewc"
         self.fisher = state["fisher"]
         for k,p in self.fisher.items():
-            self.fisher[k] = p.to(self.device)
+            self.fisher[k] = p.cuda()
         self.alpha = state["alpha"]
 
 
@@ -141,7 +142,7 @@ class PI(Regularizer):  # Path integral
             for k, p in model.named_parameters():
                 if k not in self.model_old_dict:
                     self.starting_new[k] = p.clone().detach().cpu()
-                    new_p = torch.clone(p).detach().to(device)
+                    new_p = torch.clone(p).detach().cuda()
                     self.model_old_dict[k] = new_p
         else:
             self.model_old_dict = deepcopy(model.state_dict())
@@ -152,7 +153,7 @@ class PI(Regularizer):  # Path integral
             self.score_actual = {}
             for n, p in score.items():
                 p.requires_grad = False
-                self.score_actual[n] = normalize_fn(p.to(device)) if normalize else p.to(device)
+                self.score_actual[n] = normalize_fn(p.cuda()) if normalize else p.to(device)
         else:  # initialize a new Fisher Matrix
             self.score = None
             self.penalize = False
@@ -167,7 +168,7 @@ class PI(Regularizer):  # Path integral
             # update the score
             for n, p in self.model.named_parameters():
                 if p.grad is not None:
-                    delta = p.grad.detach() * (self.model_temp[n].to(self.device) - p.detach())
+                    delta = p.grad.detach() * (self.model_temp[n].cuda() - p.detach())
                     self.delta[n] += delta  # approximation of path integral
         # update model temp
         self.model_temp = {k: torch.clone(p).detach().cpu()
@@ -187,9 +188,9 @@ class PI(Regularizer):  # Path integral
         EPS = 1e-20
         for n, p in self.model.named_parameters():
             score[n] = self.delta[n] / ((p.detach() - self.model_old_dict[n]).pow(2) + EPS)
-            score[n] = torch.where(score[n] > 0, score[n], torch.tensor(0.).to(self.device))
+            score[n] = torch.where(score[n] > 0, score[n], torch.tensor(0.).cuda())
             if self.score is not None and n in self.score:
-                score[n] = self.score[n].to(self.device) + score[n]  # the importance is averaged
+                score[n] = self.score[n].cuda() + score[n]  # the importance is averaged
         return score  # return the score matrix
 
     def state_dict(self):
@@ -201,9 +202,9 @@ class PI(Regularizer):  # Path integral
         assert state['name'] == 'pi', f"Error, you are trying to restore {state['name']} into pi"
         self.delta = state['delta']
         for k, v in self.delta.items():
-            self.delta[k] = v.to(self.device)
+            self.delta[k] = v.cuda()
         for k, p in state['starting_model'].items():
-            self.model_old_dict[k] = p.to(self.device)
+            self.model_old_dict[k] = p.cuda()
 
 
 class RW(Regularizer):
@@ -233,14 +234,14 @@ class RW(Regularizer):
             self.score_plus_fisher = {}
             for key, par in fisher.items():
                 par.requires_grad = False
-                self.score_plus_fisher[key] = normalize_fn(par.to(device)) if normalize else par.to(device)
-                self.fisher[key] = torch.clone(par).to(device)
+                self.score_plus_fisher[key] = normalize_fn(par.cuda()) if normalize else par.cuda()
+                self.fisher[key] = torch.clone(par).cuda()
 
             self.score_old = {}  # to compute the next score matrix -> not in GPU memory until used
             for n, p in score.items():
                 p.requires_grad = False
                 self.score_old[n] = p
-                self.score_plus_fisher[n] += normalize_fn(p.to(device)) if normalize else p.to(device)
+                self.score_plus_fisher[n] += normalize_fn(p.cuda()) if normalize else p.cuda()
                 if torch.isnan(self.score_plus_fisher[n].mean()) or torch.isinf(self.score_plus_fisher[n].mean()):
                     print("Some error here")
 
@@ -265,8 +266,8 @@ class RW(Regularizer):
                 # update the score
                 for n, p in self.model.named_parameters():
                     if p.grad is not None:
-                        delta = p.grad.detach() * (self.model_temp[n].to(self.device) - p.detach())
-                        den = 0.5 * self.fisher[n] * (p.detach() - self.model_temp[n].to(self.device)).pow(2) + EPS
+                        delta = p.grad.detach() * (self.model_temp[n].cuda() - p.detach())
+                        den = 0.5 * self.fisher[n] * (p.detach() - self.model_temp[n].cuda()).pow(2) + EPS
                         self.score[n] += (delta / den)
             # update model temp
             self.model_temp = {k: torch.clone(p).detach().cpu()
@@ -281,9 +282,9 @@ class RW(Regularizer):
     def get_score(self):
         score = {}
         for n, p in self.score.items():
-            score[n] = torch.where(p >= 0, p, torch.tensor(0.).to(self.device))
+            score[n] = torch.where(p >= 0, p, torch.tensor(0.).cuda())
             if self.score_old is not None and n in self.score_old:
-                score[n] = 0.5 * (score[n] + self.score_old[n].to(self.device))  # the importance is averaged
+                score[n] = 0.5 * (score[n] + self.score_old[n].cuda())  # the importance is averaged
         return score  # return the score matrix
 
     def penalty(self):
@@ -307,7 +308,7 @@ class RW(Regularizer):
         self.alpha = state['alpha']
         self.fisher = state['fisher']
         for k, p in self.fisher.items():
-            self.fisher[k] = p.to(self.device)
+            self.fisher[k] = p.cuda()
         self.score = state['score']
         for k, p in self.score.items():
-            self.score[k] = p.to(self.device)
+            self.score[k] = p.cuda()

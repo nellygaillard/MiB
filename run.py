@@ -3,9 +3,9 @@ import argparser
 import os
 from utils.logger import Logger
 
-#from apex.parallel import DistributedDataParallel
-#from apex import amp
-#from torch.utils.data.distributed import DistributedSampler
+# from apex.parallel import DistributedDataParallel
+# from apex import amp
+# from torch.utils.data.distributed import DistributedSampler
 
 import numpy as np
 import random
@@ -13,7 +13,7 @@ import torch
 from torch.utils import data
 from torch import distributed
 
-from dataset import VOCSegmentationIncremental, AdeSegmentationIncremental
+from dataset import VOCSegmentationIncremental
 from dataset import transform
 from metrics import StreamSegMetrics
 
@@ -85,7 +85,7 @@ def get_dataset(opts):
 
     if not opts.no_cross_val:  # if opts.cross_val:
         train_len = int(0.8 * len(train_dst))
-        val_len = len(train_dst)-train_len
+        val_len = len(train_dst) - train_len
         train_dst, val_dst = torch.utils.data.random_split(train_dst, [train_len, val_len])
     else:  # don't use cross_val
         val_dst = dataset(root=opts.data_root, train=False, transform=val_transform,
@@ -102,20 +102,21 @@ def get_dataset(opts):
 
 
 def main(opts):
-    #distributed.init_process_group(backend='nccl', init_method='env://')
-    #device_id, device = opts.local_rank, torch.device(opts.local_rank)
-    rank, world_size = 0, distributed.get_world_size()
-    #torch.cuda.set_device(device_id)
+    # distributed.init_process_group(backend='nccl', init_method='env://')
+    # device_id, device = opts.local_rank, torch.device(opts.local_rank)
+    # rank, world_size = 0, distributed.get_world_size()
+    # torch.cuda.set_device(device_id)
+    rank = 0
 
     # Initialize logging
     task_name = f"{opts.task}-{opts.dataset}"
     logdir_full = f"{opts.logdir}/{task_name}/{opts.name}/"
-    if rank == 0:
-        logger = Logger(logdir_full, rank=rank, debug=opts.debug, summary=opts.visualize, step=opts.step)
-    else:
-        logger = Logger(logdir_full, rank=rank, debug=opts.debug, summary=False)
+    # if rank == 0:
+    logger = Logger(logdir_full, rank=rank, debug=opts.debug, summary=opts.visualize, step=opts.step)
+    # else:
+    #    logger = Logger(logdir_full, rank=rank, debug=opts.debug, summary=False)
 
-    logger.print(f"Device: {device}")
+    # logger.print(f"Device: {device}")
 
     # Set up random seed
     torch.manual_seed(opts.random_seed)
@@ -130,14 +131,14 @@ def main(opts):
     random.seed(opts.random_seed)
 
     # ----------------
-    dataloader_train = data.DataLoader(
+    train_loader = data.DataLoader(
         train_dst,
         batch_size=opts.batch_size,
         shuffle=True,
         num_workers=opts.num_workers,
         drop_last=True
     )
-    dataloader_val = data.DataLoader(
+    val_loader = data.DataLoader(
         val_dst,
         batch_size=opts.batch_size,
         shuffle=True,
@@ -147,7 +148,7 @@ def main(opts):
 
     logger.info(f"Dataset: {opts.dataset}, Train set: {len(train_dst)}, Val set: {len(val_dst)},"
                 f" Test set: {len(test_dst)}, n_classes {n_classes}")
-    logger.info(f"Total batch size is {opts.batch_size * world_size}")
+    logger.info(f"Total batch size is {opts.batch_size}")
 
     # xxx Set up model
     logger.info(f"Backbone: {opts.backbone}")
@@ -169,15 +170,15 @@ def main(opts):
 
     # xxx Set up optimizer
     params = []
-    if not opts.freeze:
-        params.append({"params": filter(lambda p: p.requires_grad, model.body.parameters()),
-                       'weight_decay': opts.weight_decay})
 
-    params.append({"params": filter(lambda p: p.requires_grad, model.head.parameters()),
+    # if not opts.freeze:
+    #    params.append({"params": filter(lambda p: p.requires_grad, model.parameters()),
+    #                   'weight_decay': opts.weight_decay})
+    params.append({"params": filter(lambda p: p.requires_grad, model.parameters()),
                    'weight_decay': opts.weight_decay})
 
-    params.append({"params": filter(lambda p: p.requires_grad, model.cls.parameters()),
-                   'weight_decay': opts.weight_decay})
+    # params.append({"params": filter(lambda p: p.requires_grad, model.cls.parameters()),
+    #               'weight_decay': opts.weight_decay})
 
     optimizer = torch.optim.SGD(params, lr=opts.lr, momentum=0.9, nesterov=True)
 
@@ -188,17 +189,17 @@ def main(opts):
     else:
         raise NotImplementedError
     logger.debug("Optimizer:\n%s" % optimizer)
-    
+
     # already done in the creation of bisenet
-    #if model_old is not None:
+    # if model_old is not None:
     #    [model, model_old], optimizer = amp.initialize([model.to(device), model_old.to(device)], optimizer,
     #                                                   opt_level=opts.opt_level)
     #    model_old = DistributedDataParallel(model_old)
-    #else:
+    # else:
     #    model, optimizer = amp.initialize(model.to(device), optimizer, opt_level=opts.opt_level)
 
     # Put the model on GPU
-    #model = DistributedDataParallel(model, delay_allreduce=True)
+    # model = DistributedDataParallel(model, delay_allreduce=True)
 
     # xxx Load old model from old weights if step > 0!
     if opts.step > 0:
@@ -237,7 +238,7 @@ def main(opts):
             trainer_state = step_checkpoint['trainer_state']
 
     # instance trainer (model must have already the previous step weights)
-    trainer = Trainer(model, model_old, device=device, opts=opts, trainer_state=trainer_state,
+    trainer = Trainer(model, model_old, opts=opts, trainer_state=trainer_state,
                       classes=tasks.get_per_task_classes(opts.dataset, opts.task, opts.step))
 
     # xxx Handle checkpoint for current model (model old will always be as previous step or None)
@@ -278,7 +279,7 @@ def main(opts):
     results = {}
 
     # check if random is equal here.
-    logger.print(torch.randint(0,100, (1,1)))
+    logger.print(torch.randint(0, 100, (1, 1)))
     # train/val here
     while cur_epoch < opts.epochs and TRAIN:
         # =====  Train  =====
@@ -287,11 +288,11 @@ def main(opts):
         epoch_loss = trainer.train(cur_epoch=cur_epoch, optim=optimizer,
                                    train_loader=train_loader, scheduler=scheduler, logger=logger)
 
-        logger.info(f"End of Epoch {cur_epoch}/{opts.epochs}, Average Loss={epoch_loss[0]+epoch_loss[1]},"
+        logger.info(f"End of Epoch {cur_epoch}/{opts.epochs}, Average Loss={epoch_loss[0] + epoch_loss[1]},"
                     f" Class Loss={epoch_loss[0]}, Reg Loss={epoch_loss[1]}")
 
         # =====  Log metrics on Tensorboard =====
-        logger.add_scalar("E-Loss", epoch_loss[0]+epoch_loss[1], cur_epoch)
+        logger.add_scalar("E-Loss", epoch_loss[0] + epoch_loss[1], cur_epoch)
         logger.add_scalar("E-Loss-reg", epoch_loss[1], cur_epoch)
         logger.add_scalar("E-Loss-cls", epoch_loss[0], cur_epoch)
 
@@ -303,7 +304,7 @@ def main(opts):
                                                                 ret_samples_ids=sample_ids, logger=logger)
 
             logger.print("Done validation")
-            logger.info(f"End of Validation {cur_epoch}/{opts.epochs}, Validation Loss={val_loss[0]+val_loss[1]},"
+            logger.info(f"End of Validation {cur_epoch}/{opts.epochs}, Validation Loss={val_loss[0] + val_loss[1]},"
                         f" Class Loss={val_loss[0]}, Reg Loss={val_loss[1]}")
 
             logger.info(val_metrics.to_str(val_score))
@@ -318,7 +319,7 @@ def main(opts):
 
             # =====  Log metrics on Tensorboard =====
             # visualize validation score and samples
-            logger.add_scalar("V-Loss", val_loss[0]+val_loss[1], cur_epoch)
+            logger.add_scalar("V-Loss", val_loss[0] + val_loss[1], cur_epoch)
             logger.add_scalar("V-Loss-reg", val_loss[1], cur_epoch)
             logger.add_scalar("V-Loss-cls", val_loss[0], cur_epoch)
             logger.add_scalar("Val_Overall_Acc", val_score['Overall Acc'], cur_epoch)
@@ -373,7 +374,7 @@ def main(opts):
 
     val_loss, val_score, _ = trainer.validate(loader=test_loader, metrics=val_metrics, logger=logger)
     logger.print("Done test")
-    logger.info(f"*** End of Test, Total Loss={val_loss[0]+val_loss[1]},"
+    logger.info(f"*** End of Test, Total Loss={val_loss[0] + val_loss[1]},"
                 f" Class Loss={val_loss[0]}, Reg Loss={val_loss[1]}")
     logger.info(val_metrics.to_str(val_score))
     logger.add_table("Test_Class_IoU", val_score['Class IoU'])

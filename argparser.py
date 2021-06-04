@@ -50,7 +50,7 @@ def get_argparser():
     parser.add_argument("--local_rank", type=int, default=0)
     parser.add_argument("--random_seed", type=int, default=42,
                         help="random seed (default: 42)")
-    parser.add_argument("--num_workers", type=int, default=1,
+    parser.add_argument("--num_workers", type=int, default=8,
                         help='number of workers (default: 1)')
 
     # Datset Options
@@ -123,8 +123,8 @@ def get_argparser():
                         help="epoch interval for saving model (default: 1)")
 
     # Model Options
-    parser.add_argument("--backbone", type=str, default='resnet101',
-                        choices=['resnet50', 'resnet101'], help='backbone for the body (def: resnet50)')
+    parser.add_argument("--backbone", type=str, default='resnet50',
+                        choices=['resnet50', 'resnet101', 'resnet18'], help='backbone for the body (def: resnet50)')
     parser.add_argument("--output_stride", type=int, default=16,
                         choices=[8, 16], help='stride for the backbone (def: 16)')
     parser.add_argument("--no_pretrained", action='store_true', default=False,
