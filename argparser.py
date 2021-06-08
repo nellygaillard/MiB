@@ -75,7 +75,7 @@ def get_argparser():
 
     parser.add_argument("--batch_size", type=int, default=4,
                         help='batch size (default: 4)')
-    parser.add_argument("--crop_size", type=int, default=512,
+    parser.add_argument("--crop_size", type=int, default=320,
                         help="crop size (default: 513)")
 
     parser.add_argument("--lr", type=float, default=0.007,

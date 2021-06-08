@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from model.build_contextpath import build_contextpath
 import warnings
+from torch.cuda.amp import autocast
 
 warnings.filterwarnings(action='ignore')
 
@@ -23,6 +24,7 @@ class Spatial_path(torch.nn.Module):
         self.convblock2 = ConvBlock(in_channels=64, out_channels=128)
         self.convblock3 = ConvBlock(in_channels=128, out_channels=256)
 
+    @autocast()
     def forward(self, input):
         x = self.convblock1(input)
         x = self.convblock2(x)
@@ -38,6 +40,7 @@ class AttentionRefinementModule(torch.nn.Module):
         self.in_channels = in_channels
         self.avgpool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
 
+    @autocast()
     def forward(self, input):
         # global average pooling
         x = self.avgpool(input)
@@ -66,7 +69,7 @@ class FeatureFusionModule(torch.nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.avgpool = nn.AdaptiveAvgPool2d(output_size=(1, 1))
 
-
+    @autocast()
     def forward(self, input_1, input_2):
         x = torch.cat((input_1, input_2), dim=1)
         assert self.in_channels == x.size(1), 'in_channels of ConvBlock should be {}'.format(x.size(1))
@@ -166,6 +169,7 @@ class IncrementalBiSeNet(torch.nn.Module):
                     nn.init.constant_(m.weight, 1)
                     nn.init.constant_(m.bias, 0)
 
+    @autocast()
     def forward(self, input):
 
         out_size = input.shape[-2:]     # aggiunto in prova per interpolazione finale
