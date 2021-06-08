@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-#from apex import amp
+from torch.cuda.amp import autocast
+from torch.cuda.amp import GradScaler
 from functools import reduce
 
 from utils.loss import KnowledgeDistillationLoss, BCEWithLogitsLossWithIgnoreIndex, \
@@ -72,6 +73,8 @@ class Trainer:
         model = self.model
         criterion = self.criterion
 
+        scaler = GradScaler()
+
         epoch_loss = 0.0
         reg_loss = 0.0
         interval_loss = 0.0
@@ -90,41 +93,44 @@ class Trainer:
 
             if (self.lde_flag or self.lkd_flag or self.icarl_dist_flag) and self.model_old is not None:
                 with torch.no_grad():
-                    outputs_old, output_sup1_old, output_sup2_old = self.model_old(images)
+                    with autocast():
+                        outputs_old, output_sup1_old, output_sup2_old  = self.model_old(images)
 
             optim.zero_grad()
-            outputs, output_sup1, output_sup2 = model(images)
+            with autocast():
+                outputs, output_sup1, output_sup2 = model(images)
 
             # xxx BCE / Cross Entropy Loss
-            if not self.icarl_only_dist:
-                loss = criterion(outputs, labels)  # B x H x W
-            else:
-                loss = self.licarl(outputs, labels, torch.sigmoid(outputs_old))
+            with autocast():
+                if not self.icarl_only_dist:
+                    loss = criterion(outputs, labels)  # B x H x W
+                else:
+                    loss = self.licarl(outputs, labels, torch.sigmoid(outputs_old))
 
-            loss = loss.mean()  # scalar
+                loss = loss.mean()  # scalar
 
-            if self.icarl_combined:
-                # tensor.narrow( dim, start, end) -> slice tensor from start to end in the specified dim
-                n_cl_old = outputs_old.shape[1]
-                # use n_cl_old to sum the contribution of each class, and not to average them (as done in our BCE).
-                l_icarl = self.icarl * n_cl_old * self.licarl(outputs.narrow(1, 0, n_cl_old),
-                                                              torch.sigmoid(outputs_old))
+                if self.icarl_combined:
+                    # tensor.narrow( dim, start, end) -> slice tensor from start to end in the specified dim
+                    n_cl_old = outputs_old.shape[1]
+                    # use n_cl_old to sum the contribution of each class, and not to average them (as done in our BCE).
+                    l_icarl = self.icarl * n_cl_old * self.licarl(outputs.narrow(1, 0, n_cl_old),
+                                                                  torch.sigmoid(outputs_old))
 
-            # xxx ILTSS (distillation on features or logits)
-            if self.lde_flag:
-                lde = self.lde * self.lde_loss(features['body'], features_old['body'])
+                # xxx ILTSS (distillation on features or logits)
+                if self.lde_flag:
+                    lde = self.lde * self.lde_loss(features['body'], features_old['body'])
 
-            if self.lkd_flag:
-                # resize new output to remove new logits and keep only the old ones
-                lkd = self.lkd * self.lkd_loss(outputs, outputs_old)
+                if self.lkd_flag:
+                    # resize new output to remove new logits and keep only the old ones
+                    lkd = self.lkd * self.lkd_loss(outputs, outputs_old)
 
-            # xxx first backprop of previous loss (compute the gradients for regularization methods)
-            loss_tot = loss + lkd + lde + l_icarl
+                # xxx first backprop of previous loss (compute the gradients for regularization methods)
+                loss_tot = loss + lkd + lde + l_icarl
 
-            with torch.cuda.amp.autocast():
-                loss_tot.backward()
+            # Scales loss. Calls backwards() on scaled loss to create scaled gradients
+            scaler.scale(loss_tot).backward()
 
-            # xxx Regularizer (EWC, RW, PI)
+            # xxx Regularizer (EWC, RW, PI) ------- not needed for ilss project
             if self.regularizer_flag:
                 if distributed.get_rank() == 0:
                     self.regularizer.update()
@@ -133,7 +139,12 @@ class Trainer:
                     with torch.cuda.amp.autocast():
                         l_reg.backward()
 
-            optim.step()
+            #optim.step()
+            scaler.step(optim)
+
+            # updates the scale for next iteration
+            scaler.update()
+
             if scheduler is not None:
                 scheduler.step()
 
@@ -177,6 +188,8 @@ class Trainer:
         criterion = self.criterion
         model.eval()
 
+        scaler = GradScaler()
+
         class_loss = 0.0
         reg_loss = 0.0
         lkd = torch.tensor(0.)
@@ -193,43 +206,46 @@ class Trainer:
 
                 if (self.lde_flag or self.lkd_flag or self.icarl_dist_flag) and self.model_old is not None:
                     with torch.no_grad():
-                        outputs_old, loss1_old, loss2_old = self.model_old(images)
+                        with autocast():
+                            outputs_old, loss1_old, loss2_old = self.model_old(images)
 
-                outputs, output_sup1, output_sup2 = model(images)
+                with autocast():
+                    outputs, output_sup1, output_sup2 = model(images)
                 #loss1 = loss_func(output, label)
                 #loss2 = loss_func(output_sup1, label)
                 #loss3 = loss_func(output_sup2, label)
                 #loss = loss1 + loss2 + loss3
 
-                # xxx BCE / Cross Entropy Loss
-                if not self.icarl_only_dist:
-                    loss = criterion(outputs, labels)  # B x H x W
-                else:
-                    loss = self.licarl(outputs, labels, torch.sigmoid(outputs_old))
 
-                loss = loss.mean()  # scalar
+                    # xxx BCE / Cross Entropy Loss
+                    if not self.icarl_only_dist:
+                        loss = criterion(outputs, labels)  # B x H x W
+                    else:
+                        loss = self.licarl(outputs, labels, torch.sigmoid(outputs_old))
 
-                if self.icarl_combined:
-                    # tensor.narrow( dim, start, end) -> slice tensor from start to end in the specified dim
-                    n_cl_old = outputs_old.shape[1]
-                    # use n_cl_old to sum the contribution of each class, and not to average them (as done in our BCE).
-                    l_icarl = self.icarl * n_cl_old * self.licarl(outputs.narrow(1, 0, n_cl_old),
-                                                                  torch.sigmoid(outputs_old))
+                    loss = loss.mean()  # scalar
 
-                # xxx ILTSS (distillation on features or logits)
-                if self.lde_flag:
-                    lde = self.lde_loss(features['body'], features_old['body'])
+                    if self.icarl_combined:
+                        # tensor.narrow( dim, start, end) -> slice tensor from start to end in the specified dim
+                        n_cl_old = outputs_old.shape[1]
+                        # use n_cl_old to sum the contribution of each class, and not to average them (as done in our BCE).
+                        l_icarl = self.icarl * n_cl_old * self.licarl(outputs.narrow(1, 0, n_cl_old),
+                                                                      torch.sigmoid(outputs_old))
 
-                if self.lkd_flag:
-                    lkd = self.lkd_loss(outputs, outputs_old)
+                    # xxx ILTSS (distillation on features or logits)
+                    if self.lde_flag:
+                        lde = self.lde_loss(features['body'], features_old['body'])
 
-                # xxx Regularizer (EWC, RW, PI)
-                if self.regularizer_flag:
-                    l_reg = self.regularizer.penalty()
+                    if self.lkd_flag:
+                        lkd = self.lkd_loss(outputs, outputs_old)
 
-                class_loss += loss.item()
-                reg_loss += l_reg.item() if l_reg != 0. else 0.
-                reg_loss += lkd.item() + lde.item() + l_icarl.item()
+                    # xxx Regularizer (EWC, RW, PI)
+                    if self.regularizer_flag:
+                        l_reg = self.regularizer.penalty()
+
+                    class_loss += loss.item()
+                    reg_loss += l_reg.item() if l_reg != 0. else 0.
+                    reg_loss += lkd.item() + lde.item() + l_icarl.item()
 
                 _, prediction = outputs.max(dim=1)
 
