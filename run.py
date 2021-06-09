@@ -361,13 +361,13 @@ def main(opts):
     if TRAIN:
         model = make_model(opts, classes=tasks.get_per_task_classes(opts.dataset, opts.task, opts.step))
         # Put the model on GPU
-        model = nn.DataParallel(model.cuda())
+        model = torch.nn.DataParallel(model.cuda())
         ckpt = f"checkpoints/step/{task_name}_{opts.name}_{opts.step}.pth"
         checkpoint = torch.load(ckpt, map_location="cpu")
         model.load_state_dict(checkpoint["model_state"])
         logger.info(f"*** Model restored from {ckpt}")
         del checkpoint
-        trainer = Trainer(model, None, device=None, opts=opts)
+        trainer = Trainer(model, None, opts=opts)
 
     model.eval()
 
