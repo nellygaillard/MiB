@@ -141,7 +141,7 @@ def main(opts):
     val_loader = data.DataLoader(
         val_dst,
         batch_size=opts.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=opts.num_workers
     )
     # ----------------

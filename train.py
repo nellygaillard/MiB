@@ -169,12 +169,14 @@ class Trainer:
         epoch_loss = torch.tensor(epoch_loss).cuda()
         reg_loss = torch.tensor(reg_loss).cuda()
 
-        torch.distributed.reduce(epoch_loss, dst=0)
-        torch.distributed.reduce(reg_loss, dst=0)
+        # reduce the tensor data across all machines: not needed in our case, only the process with dst
+        # is going to receive the final result
+        #torch.distributed.reduce(epoch_loss, dst=0)
+        #torch.distributed.reduce(reg_loss, dst=0)
 
-        if distributed.get_rank() == 0:
-            epoch_loss = epoch_loss / len(train_loader) # !!!
-            reg_loss = reg_loss / len(train_loader)     # !!!
+
+        epoch_loss = epoch_loss / len(train_loader) # !!!
+        reg_loss = reg_loss / len(train_loader)     # !!!
 
         logger.info(f"Epoch {cur_epoch}, Class Loss={epoch_loss}, Reg Loss={reg_loss}")
 
@@ -265,12 +267,8 @@ class Trainer:
             class_loss = torch.tensor(class_loss).cuda()
             reg_loss = torch.tensor(reg_loss).cuda()
 
-            torch.distributed.reduce(class_loss, dst=0)
-            torch.distributed.reduce(reg_loss, dst=0)
-
-            if distributed.get_rank() == 0:
-                class_loss = class_loss / len(loader)   # !!
-                reg_loss = reg_loss / len(loader)       # !!
+            class_loss = class_loss / len(loader)   # !!
+            reg_loss = reg_loss / len(loader)       # !!
 
             if logger is not None:
                 logger.info(f"Validation, Class Loss={class_loss}, Reg Loss={reg_loss} (without scaling)")
