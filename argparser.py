@@ -73,7 +73,7 @@ def get_argparser():
     parser.add_argument("--fix_bn", action='store_true', default=False,
                         help='fix batch normalization during training (default: False)')
 
-    parser.add_argument("--batch_size", type=int, default=4,
+    parser.add_argument("--batch_size", type=int, default=32,
                         help='batch size (default: 4)')
     parser.add_argument("--crop_size", type=int, default=320,
                         help="crop size (default: 513)")

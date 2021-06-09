@@ -101,10 +101,10 @@ class IncrementalBiSeNet(torch.nn.Module):
             self.supervision2 = nn.ModuleList(
                 [nn.Conv2d(in_channels=2048, out_channels=c, kernel_size=1) for c in classes])
             # build feature fusion module
-            self.FFM = nn.ModuleList(
-                [FeatureFusionModule(c, 3328) for c in classes]
-            )
-            # self.feature_fusion_module = FeatureFusionModule(num_classes, 3328)
+            #self.FFM = nn.ModuleList(
+            #    [FeatureFusionModule(c, 3328) for c in classes]
+            #)
+            self.feature_fusion_module = FeatureFusionModule(32, 3328)
 
         # build attention refinement module  for resnet 50
         elif context_path == 'resnet50':
@@ -116,10 +116,10 @@ class IncrementalBiSeNet(torch.nn.Module):
             self.supervision2 = nn.ModuleList(
                 [nn.Conv2d(in_channels=2048, out_channels=c, kernel_size=1) for c in classes])
             # build feature fusion module
-            self.FFM = nn.ModuleList(
-                [FeatureFusionModule(c, 3328) for c in classes]
-            )
-            # self.feature_fusion_module = FeatureFusionModule(num_classes, 3328)
+            #self.FFM = nn.ModuleList(
+            #    [FeatureFusionModule(c, 3328) for c in classes]
+            #)
+            self.feature_fusion_module = FeatureFusionModule(32, 3328)
 
         elif context_path == 'resnet18':
             # build attention refinement module  for resnet 18
@@ -132,17 +132,17 @@ class IncrementalBiSeNet(torch.nn.Module):
                 [nn.Conv2d(in_channels=512, out_channels=c, kernel_size=1) for c in classes])
 
             # build feature fusion module
-            #self.feature_fusion_module = FeatureFusionModule(num_classes, 1024)
-            self.FFM = nn.ModuleList(
-                [FeatureFusionModule(c, 1024) for c in classes]
-            )
+            self.feature_fusion_module = FeatureFusionModule(32, 1024)
+            #self.FFM = nn.ModuleList(
+            #    [FeatureFusionModule(c, 1024) for c in classes]
+            #)
         else:
             print('Error: unspport context_path network \n')
 
 
         # build final list of classifiers
         self.cls = nn.ModuleList(
-            [nn.Conv2d(c, c, 1) for c in classes]
+            [nn.Conv2d(32, c, 1) for c in classes]
         )
         # build final convolution
         # self.conv = nn.Conv2d(in_channels=num_classes, out_channels=num_classes, kernel_size=1)
@@ -203,11 +203,11 @@ class IncrementalBiSeNet(torch.nn.Module):
             cx2_sup = torch.nn.functional.interpolate(cx2_sup, size=input.size()[-2:], mode='bilinear')
 
         # output of feature fusion module
-        result_list = []
-        for mod in self.FFM:
-            result_list.append(mod(sx, cx))
-        result = torch.cat(result_list, dim=1)      # dimensions: (batch_size, classes, height, width)
-        #result = self.feature_fusion_module(sx, cx)
+        #result_list = []
+        #for mod in self.FFM:
+        #    result_list.append(mod(sx, cx))
+        #result = torch.cat(result_list, dim=1)      # dimensions: (batch_size, classes, height, width)
+        result = self.feature_fusion_module(sx, cx)
 
         # upsampling
         result = torch.nn.functional.interpolate(result, scale_factor=8, mode='bilinear')
