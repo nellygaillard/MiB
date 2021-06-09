@@ -209,10 +209,10 @@ class Trainer:
                 if (self.lde_flag or self.lkd_flag or self.icarl_dist_flag) and self.model_old is not None:
                     with torch.no_grad():
                         with autocast():
-                            outputs_old, loss1_old, loss2_old = self.model_old(images)
+                            outputs_old, dictionary = self.model_old(images)
 
                 with autocast():
-                    outputs, output_sup1, output_sup2 = model(images)
+                    outputs, dictionary = model(images)
                 #loss1 = loss_func(output, label)
                 #loss2 = loss_func(output_sup1, label)
                 #loss3 = loss_func(output_sup2, label)
