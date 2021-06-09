@@ -93,12 +93,12 @@ class IncrementalSegmentationModule(nn.Module):
             return x_o, x_net
         return x_o
 
-    def init_new_classifier(self, device):
+    def init_new_classifier(self):
         cls = self.cls[-1]
         imprinting_w = self.cls[0].weight[0]
         bkg_bias = self.cls[0].bias[0]
 
-        bias_diff = torch.log(torch.FloatTensor([self.classes[-1] + 1])).to(device)
+        bias_diff = torch.log(torch.FloatTensor([self.classes[-1] + 1])).cuda()
 
         new_bias = (bkg_bias - bias_diff)
 

@@ -215,7 +215,7 @@ def main(opts):
             model.load_state_dict(step_checkpoint['model_state'], strict=False)  # False because of incr. classifiers
             if opts.init_balanced:
                 # implement the balanced initialization (new cls has weight of background and bias = bias_bkg - log(N+1)
-                model.module.init_new_classifier(device)
+                model.module.init_new_classifier()
             # Load state dict from the model state dict, that contains the old model parameters
             model_old.load_state_dict(step_checkpoint['model_state'], strict=True)  # Load also here old parameters
             logger.info(f"[!] Previous model loaded from {path}")
@@ -349,26 +349,25 @@ def main(opts):
                   model, trainer, optimizer, scheduler, cur_epoch, best_score)
         logger.info("[!] Checkpoint saved.")
 
-    torch.distributed.barrier()
+    #torch.distributed.barrier()
 
     # xxx From here starts the test code
     logger.info("*** Test the model on all seen classes...")
     # make data loader
     test_loader = data.DataLoader(test_dst, batch_size=opts.batch_size if opts.crop_val else 1,
-                                  sampler=DistributedSampler(test_dst, num_replicas=world_size, rank=rank),
                                   num_workers=opts.num_workers)
 
     # load best model
     if TRAIN:
         model = make_model(opts, classes=tasks.get_per_task_classes(opts.dataset, opts.task, opts.step))
         # Put the model on GPU
-        model = DistributedDataParallel(model.cuda(device))
+        model = nn.DataParallel(model.cuda())
         ckpt = f"checkpoints/step/{task_name}_{opts.name}_{opts.step}.pth"
         checkpoint = torch.load(ckpt, map_location="cpu")
         model.load_state_dict(checkpoint["model_state"])
         logger.info(f"*** Model restored from {ckpt}")
         del checkpoint
-        trainer = Trainer(model, None, device=device, opts=opts)
+        trainer = Trainer(model, None, device=None, opts=opts)
 
     model.eval()
 

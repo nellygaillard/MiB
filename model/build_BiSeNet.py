@@ -155,7 +155,7 @@ class IncrementalBiSeNet(torch.nn.Module):
         self.mul_lr.append(self.attention_refinement_module2)
         self.mul_lr.append(self.supervision1)
         self.mul_lr.append(self.supervision2)
-        self.mul_lr.append(self.FFM)
+        self.mul_lr.append(self.feature_fusion_module)
         self.mul_lr.append(self.cls)
 
     def init_weight(self):
