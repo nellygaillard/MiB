@@ -25,6 +25,7 @@ class Trainer:
         # Select the Loss Type
         reduction = 'none'
 
+        self.supervision_losses = opts.supervl          # if to add the bisenet supervision losses
         self.bce = opts.bce or opts.icarl
         if self.bce:
             self.criterion = BCEWithLogitsLossWithIgnoreIndex(reduction=reduction)
@@ -90,6 +91,7 @@ class Trainer:
 
             images = images.cuda()
             labels = labels.cuda().long()
+            loss_func = torch.nn.CrossEntropyLoss(ignore_index=255)
 
             if (self.lde_flag or self.lkd_flag or self.icarl_dist_flag) and self.model_old is not None:
                 with torch.no_grad():
@@ -100,12 +102,24 @@ class Trainer:
             with autocast():
                 outputs, output_sup1, output_sup2 = model(images)
 
+            # loss1 = loss_func(output, label)
+            # loss2 = loss_func(output_sup1, label)
+            # loss3 = loss_func(output_sup2, label)
+            # loss = loss1 + loss2 + loss3
+
             # xxx BCE / Cross Entropy Loss
             with autocast():
+                if self.supervision_losses:
+                    loss2 = criterion(output_sup1, labels)
+                    loss3 = criterion(ouput_sup2, labels)
+                    loss_supervision = loss2 + loss3
                 if not self.icarl_only_dist:
                     loss = criterion(outputs, labels)  # B x H x W
                 else:
                     loss = self.licarl(outputs, labels, torch.sigmoid(outputs_old))
+
+                if self.supervision_losses:
+                    loss += loss_supervision
 
                 loss = loss.mean()  # scalar
 
@@ -213,10 +227,6 @@ class Trainer:
 
                 with autocast():
                     outputs, dictionary = model(images)
-                #loss1 = loss_func(output, label)
-                #loss2 = loss_func(output_sup1, label)
-                #loss3 = loss_func(output_sup2, label)
-                #loss = loss1 + loss2 + loss3
 
 
                     # xxx BCE / Cross Entropy Loss

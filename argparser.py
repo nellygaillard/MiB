@@ -142,6 +142,10 @@ def get_argparser():
     parser.add_argument("--ckpt", default=None, type=str,
                         help="path to trained model. Leave it None if you want to retrain your model")
 
+    # Parameter for BiSeNet supervision losses
+    parser.add_argument("--supervl", action='store_true', default=True,
+                        help="Use this to disable the supervision losses of the BiSeNet")
+
     # Parameters for Knowledge Distillation of ILTSS (https://arxiv.org/abs/1907.13372)
     parser.add_argument("--freeze", action='store_true', default=False,
                         help="Use this to freeze the feature extractor in incremental steps")

@@ -345,7 +345,7 @@ def main(opts):
     # =====  Save Best Model at the end of training =====
     if rank == 0 and TRAIN:  # save best model at the last iteration
         # best model to build incremental steps
-        save_ckpt(f"checkpoints/step/{task_name}_{opts.name}_{opts.step}.pth",
+        save_ckpt(f"/content/drive/MyDrive/MLDL/CKPT/checkpoints/step/{task_name}_{opts.name}_{opts.step}.pth",
                   model, trainer, optimizer, scheduler, cur_epoch, best_score)
         logger.info("[!] Checkpoint saved.")
 
@@ -396,6 +396,6 @@ if __name__ == '__main__':
     opts = parser.parse_args()
     opts = argparser.modify_command_options(opts)
 
-    os.makedirs("checkpoints/step", exist_ok=True)
+    os.makedirs("/content/drive/MyDrive/MLDL/CKPT/checkpoints/step", exist_ok=True)
 
     main(opts)
