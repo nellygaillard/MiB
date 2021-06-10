@@ -313,7 +313,7 @@ def main(opts):
             if rank == 0:  # save best model at the last iteration
                 score = val_score['Mean IoU']
                 # best model to build incremental steps
-                save_ckpt(f"checkpoints/step/{task_name}_{opts.name}_{opts.step}.pth",
+                save_ckpt(f"/content/drive/MyDrive/MLDL/CKPT/checkpoints/step/{task_name}_{opts.name}_{opts.step}.pth",
                           model, trainer, optimizer, scheduler, cur_epoch, score)
                 logger.info("[!] Checkpoint saved.")
 
@@ -362,7 +362,7 @@ def main(opts):
         model = make_model(opts, classes=tasks.get_per_task_classes(opts.dataset, opts.task, opts.step))
         # Put the model on GPU
         model = torch.nn.DataParallel(model.cuda())
-        ckpt = f"checkpoints/step/{task_name}_{opts.name}_{opts.step}.pth"
+        ckpt = f"/content/drive/MyDrive/MLDL/CKPT/checkpoints/step/{task_name}_{opts.name}_{opts.step}.pth"
         checkpoint = torch.load(ckpt, map_location="cpu")
         model.load_state_dict(checkpoint["model_state"])
         logger.info(f"*** Model restored from {ckpt}")
