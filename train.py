@@ -111,7 +111,7 @@ class Trainer:
             with autocast():
                 if self.supervision_losses:
                     loss2 = criterion(output_sup1, labels)
-                    loss3 = criterion(ouput_sup2, labels)
+                    loss3 = criterion(output_sup2, labels)
                     loss_supervision = loss2 + loss3
                 if not self.icarl_only_dist:
                     loss = criterion(outputs, labels)  # B x H x W
