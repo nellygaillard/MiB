@@ -102,11 +102,6 @@ class Trainer:
             with autocast():
                 outputs, output_sup1, output_sup2 = model(images)
 
-            # loss1 = loss_func(output, label)
-            # loss2 = loss_func(output_sup1, label)
-            # loss3 = loss_func(output_sup2, label)
-            # loss = loss1 + loss2 + loss3
-
             # xxx BCE / Cross Entropy Loss
             with autocast():
                 if self.supervision_losses:
