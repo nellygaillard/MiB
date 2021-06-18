@@ -154,6 +154,7 @@ def main(opts):
     logger.info(f"Backbone: {opts.backbone}")
 
     step_checkpoint = None
+
     model = make_model(opts, classes=tasks.get_per_task_classes(opts.dataset, opts.task, opts.step))
 
     logger.info(f"[!] Model made with{'out' if opts.no_pretrained else ''} pre-trained")

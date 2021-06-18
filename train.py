@@ -96,7 +96,7 @@ class Trainer:
             if (self.lde_flag or self.lkd_flag or self.icarl_dist_flag) and self.model_old is not None:
                 with torch.no_grad():
                     with autocast():
-                        outputs_old, output_sup1_old, output_sup2_old  = self.model_old(images)
+                        outputs_old, empty_dict = self.model_old(images)
 
             optim.zero_grad()
             with autocast():

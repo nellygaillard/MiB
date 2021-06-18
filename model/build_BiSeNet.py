@@ -86,7 +86,7 @@ class IncrementalBiSeNet(torch.nn.Module):
     def __init__(self, classes, context_path):
         super().__init__()
         # build spatial path
-        self.saptial_path = Spatial_path()
+        self.spatial_path = Spatial_path()
 
         # build context path
         self.context_path = build_contextpath(name=context_path)
@@ -140,17 +140,15 @@ class IncrementalBiSeNet(torch.nn.Module):
             print('Error: unspport context_path network \n')
 
 
-        # build final list of classifiers
+        # build final list of classifiers (convolutions)
         self.cls = nn.ModuleList(
-            [nn.Conv2d(32, c, 1) for c in classes]
+            [nn.Conv2d(in_channels=32, out_channels=c, kernel_size=1) for c in classes]
         )
-        # build final convolution
-        # self.conv = nn.Conv2d(in_channels=num_classes, out_channels=num_classes, kernel_size=1)
 
         self.init_weight()
 
         self.mul_lr = []
-        self.mul_lr.append(self.saptial_path)
+        self.mul_lr.append(self.spatial_path)
         self.mul_lr.append(self.attention_refinement_module1)
         self.mul_lr.append(self.attention_refinement_module2)
         self.mul_lr.append(self.supervision1)
@@ -175,7 +173,7 @@ class IncrementalBiSeNet(torch.nn.Module):
         out_size = input.shape[-2:]     # aggiunto in prova per interpolazione finale
 
         # output of spatial path
-        sx = self.saptial_path(input)
+        sx = self.spatial_path(input)
 
         # output of context path
         cx1, cx2, tail = self.context_path(input)
