@@ -314,7 +314,7 @@ def main(opts):
             if rank == 0:  # save best model at the last iteration
                 score = val_score['Mean IoU']
                 # best model to build incremental steps
-                save_ckpt(f"checkpoints/step/{task_name}_{opts.name}_{opts.step}.pth",
+                save_ckpt(f"/content/drive/MyDrive/MLDL/CKPT/checkpoints/step/{task_name}_{opts.name}_{opts.step}.pth",
                           model, trainer, optimizer, scheduler, cur_epoch, score)
                 logger.info("[!] Checkpoint saved.")
 
