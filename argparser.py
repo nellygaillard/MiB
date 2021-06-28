@@ -21,7 +21,7 @@ def modify_command_options(opts):
             opts.icarl_importance = 10
         if opts.method == 'ILT':
             opts.loss_kd = 100
-            opts.loss_de = 100
+            opts.loss_de = 0
         if opts.method == 'EWC':
             opts.regularizer = "ewc"
             opts.reg_importance = 500
@@ -97,7 +97,7 @@ def get_argparser():
                         help="Whether to use BCE or not (default: no)")
 
     # Validation Options
-    parser.add_argument("--val_on_trainset", action='store_true', default=False,
+    parser.add_argument("--val_on_trainset", action='store_true', default=True,
                         help="enable validation on train set (default: False)")
     parser.add_argument("--cross_val", action='store_true', default=False,
                         help="If validate on training or on validation (default: Train)")
@@ -154,7 +154,7 @@ def get_argparser():
                              "0 to enable distillation on Encoder (L2)")
     parser.add_argument("--loss_kd", type=float, default=0.,  # Distillation on Output
                         help="Set this hyperparameter to a value greater than "
-                             "0 to enable Knowlesge Distillation (Soft-CrossEntropy)")
+                             "0 to enable Knowledge Distillation (Soft-CrossEntropy)")
 
     # Parameters for EWC, RW, and SI (from Riemannian Walks https://arxiv.org/abs/1801.10112)
     parser.add_argument("--regularizer", default=None, type=str, choices=['ewc', 'rw', 'pi'],
