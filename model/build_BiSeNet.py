@@ -85,6 +85,7 @@ class FeatureFusionModule(torch.nn.Module):
 class IncrementalBiSeNet(torch.nn.Module):
     def __init__(self, classes, context_path):
         super().__init__()
+        self.classes=classes
         # build spatial path
         self.saptial_path = Spatial_path()
 
@@ -166,6 +167,20 @@ class IncrementalBiSeNet(torch.nn.Module):
                     m.momentum = 0.1
                     nn.init.constant_(m.weight, 1)
                     nn.init.constant_(m.bias, 0)
+                    
+    def init_new_classifier(self):
+        cls = self.cls[-1]
+        imprinting_w = self.cls[0].weight[0]
+        bkg_bias = self.cls[0].bias[0]
+
+        bias_diff = torch.log(torch.FloatTensor([self.classes[-1] + 1])).cuda()
+
+        new_bias = (bkg_bias - bias_diff)
+
+        cls.weight.data.copy_(imprinting_w)
+        cls.bias.data.copy_(new_bias)
+
+        self.cls[0].bias[0].data.copy_(new_bias.squeeze(0))
 
     @autocast()
     def forward(self, input):
