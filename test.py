@@ -1,5 +1,4 @@
 import utils
-import argparser_test
 import os
 from utils.logger import Logger
 import numpy as np
@@ -7,13 +6,11 @@ import random
 import torch
 from torch.utils import data
 from torch import distributed
-
 from dataset import VOCSegmentationIncremental
 from dataset import transform
 from metrics import StreamSegMetrics
-
 from segmentation_module import make_model
-import tasl
+import task
 
 def get_dataset(opts):
     """ Dataset And Augmentation
