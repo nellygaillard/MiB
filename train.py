@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.cuda.amp import autocast
 from torch.cuda.amp import GradScaler
 from functools import reduce
+import math
 
 from utils.loss import KnowledgeDistillationLoss, BCEWithLogitsLossWithIgnoreIndex, \
     UnbiasedKnowledgeDistillationLoss, UnbiasedCrossEntropy, IcarlLoss
@@ -14,11 +15,15 @@ class Trainer:
 
         self.model_old = model_old
         self.model = model
+        self.step = opts.step
 
         if classes is not None:
             new_classes = classes[-1]
             tot_classes = reduce(lambda a, b: a + b, classes)
             self.old_classes = tot_classes - new_classes
+            self.nb_classes = opts.num_classes
+            self.nb_current_classes = tot_classes
+            self.nb_new_classes = new_classes
         else:
             self.old_classes = 0
 
@@ -95,6 +100,20 @@ class Trainer:
                 train_loader, logger, mode="entropy"
             )
 
+
+    def entropy(probabilities):
+        """Computes the entropy per pixel.
+        # References:
+            * ESL: Entropy-guided Self-supervised Learning for Domain Adaptation in Semantic Segmentation
+              Saporta et al.
+              CVPR Workshop 2020
+        :param probabilities: Tensor of shape (b, c, w, h).
+        :return: One entropy per pixel, shape (b, w, h)
+        """
+        factor = 1 / math.log(probabilities.shape[1] + 1e-8)
+        return -factor * torch.mean(probabilities * torch.log(probabilities + 1e-8), dim=1)
+
+
     def train(self, cur_epoch, optim, train_loader, scheduler=None, print_int=10, logger=None):
         """Train and return epoch loss"""
         logger.info(f"Pseudo labeling is: {self.pseudo_labeling}")
@@ -153,10 +172,12 @@ class Trainer:
                     labels[mask_background] = pseudo_labels[mask_background]
                 elif self.pseudo_labeling == "entropy":
                     probs = torch.softmax(outputs_old, dim=1)
+                    #computing the entropy
+                    factor = 1 / math.log(probs.shape[1] + 1e-8)
+                    entropy = -factor * torch.mean(probs * torch.log(probs + 1e-8), dim=1)
                     max_probs, pseudo_labels = probs.max(dim=1)
 
-                    mask_valid_pseudo = (entropy(probs) /
-                                         self.max_entropy) < self.thresholds[pseudo_labels]
+                    mask_valid_pseudo = (entropy/self.max_entropy) < self.thresholds[pseudo_labels]
 
                     if self.pseudo_soft is None:
                         # All old labels that are NOT confident enough to be used as pseudo labels:
@@ -371,20 +392,22 @@ class Trainer:
         if self.pseudo_nb_bins is not None:
             nb_bins = self.pseudo_nb_bins
 
-        histograms = torch.zeros(self.nb_current_classes, nb_bins).long().to(self.device)
+        histograms = torch.zeros(self.nb_current_classes, nb_bins).long().cuda()
 
         for cur_step, (images, labels) in enumerate(train_loader):
             images = images.cuda()
             labels = labels.cuda()
 
-            outputs_old, features_old = self.model_old(images, ret_intermediate=False)
+            outputs_old, dictionary = self.model_old(images)
 
             mask_bg = labels == 0
             probas = torch.softmax(outputs_old, dim=1)
             max_probas, pseudo_labels = probas.max(dim=1)
 
             if mode == "entropy":
-                values_to_bins = entropy(probas)[mask_bg].view(-1) / max_value
+                factor = 1 / math.log(probas.shape[1] + 1e-8)
+                entropy = -factor * torch.mean(probas * torch.log(probas + 1e-8), dim=1)
+                values_to_bins = entropy[mask_bg].view(-1) / max_value
             else:
                 values_to_bins = max_probas[mask_bg].view(-1)
 
@@ -394,7 +417,7 @@ class Trainer:
             histograms.index_put_(
                 (x_coords, y_coords),
                 torch.LongTensor([1]).expand_as(x_coords).cuda(),
-                accumulate=True
+                accumulate=False
             )
 
             if cur_step % 10 == 0:
@@ -534,18 +557,6 @@ class Trainer:
 
     def bce(x, y):
         return -(y * torch.log(x + 1e-6) + (1 - y) * torch.log((1 - x) + 1e-6))
-
-    def entropy(probabilities):
-        """Computes the entropy per pixel.
-        # References:
-            * ESL: Entropy-guided Self-supervised Learning for Domain Adaptation in Semantic Segmentation
-              Saporta et al.
-              CVPR Workshop 2020
-        :param probabilities: Tensor of shape (b, c, w, h).
-        :return: One entropy per pixel, shape (b, w, h)
-        """
-        factor = 1 / math.log(probabilities.shape[1] + 1e-8)
-        return -factor * torch.mean(probabilities * torch.log(probabilities + 1e-8), dim=1)
 
 
     def soft_crossentropy(logits, labels, logits_old, mask_valid_pseudo,
