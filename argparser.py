@@ -36,6 +36,11 @@ def modify_command_options(opts):
             opts.unce = True
             opts.unkd = True
             opts.init_balanced = True
+        if opts.method == 'pseudoMiB':
+            opts.pseudo = "entropy"
+            opts.threshold = 0.001
+            opts.classif_adaptive_factor = True
+            opts.init_balanced = True
 
     opts.no_overlap = not opts.overlap
     opts.no_cross_val = not opts.cross_val
@@ -64,7 +69,7 @@ def get_argparser():
     # Method Options
     # BE CAREFUL USING THIS, THEY WILL OVERRIDE ALL THE OTHER PARAMETERS.
     parser.add_argument("--method", type=str, default=None,
-                        choices=['FT', 'LWF', 'LWF-MC', 'ILT', 'EWC', 'RW', 'PI', 'MiB'],
+                        choices=['FT', 'LWF', 'LWF-MC', 'ILT', 'EWC', 'RW', 'PI', 'MiB', 'pseudoMiB'],
                         help="The method you want to use. BE CAREFUL USING THIS, IT MAY OVERRIDE OTHER PARAMETERS.")
 
     # Train Options
@@ -201,4 +206,90 @@ def get_argparser():
                         help="path to trained model at previous step. Leave it None if you want to use def path")
     parser.add_argument('--opt_level', type=str, choices=['O0', 'O1', 'O2', 'O3'], default='O0')
 
+
+    # Pseudo-labeling
+    parser.add_argument("--strict_weights", action="store_false", default=True)
+    parser.add_argument("--base_weights", action="store_true", default=False)
+
+    parser.add_argument(
+        "--lr_old", type=float, default=None, help="learning rate for old classes weights."
+    )
+    parser.add_argument(
+        "--data_masking",
+        type=str,
+        default="current",
+        choices=["current", "current+old", "all", "new"]
+    )
+    parser.add_argument('--opt_level', type=str, choices=['O0', 'O1', 'O2', 'O3'], default='O0')
+    parser.add_argument(
+        "--pseudo",
+        type=str,
+        default=None,
+        help="Pseudo-labeling method." +
+             ", ".join(["naive", "confidence", "threshold_5", "threshold_8", "median", "entropy"])
+    )
+    parser.add_argument("--threshold", type=float, default=0.9)
+    parser.add_argument("--step_threshold", type=float, default=None)
+    parser.add_argument(
+        "--ce_on_pseudo",
+        default=False,
+        action="store_true",
+        help="Pseudo Labels are trained w/ CE, default criterion for others"
+    )
+    parser.add_argument("--pseudo_nb_bins", default=None, type=int)
+    parser.add_argument("--classif_adaptive_factor", default=False, action="store_true")
+    parser.add_argument("--classif_adaptive_min_factor", default=0.0, type=float)
+    parser.add_argument("--pseudo_soft", default=None, type=str, choices=["soft_certain", "soft_uncertain"])
+    parser.add_argument("--pseudo_soft_factor", default=1.0, type=float)
+    parser.add_argument("--pseudo_ablation", default=None, choices=["corrected_errors", "removed_errors"])
+
+    parser.add_argument("--kd_new", default=False, action="store_true", help="Apply KD only on new")
+
+    parser.add_argument(
+        "--checkpoint", type=str, default="./checkpoints/step"
+    )
+
+    #???
+    parser.add_argument("--nb_background_modes", default=1, type=int)
+    parser.add_argument(
+        "--init_multimodal",
+        default=None,
+        type=str,
+        choices=["max", "softmax", "max_init", "softmax_init", "softmax_remove", "max_remove"]
+    )
+    parser.add_argument("--multimodal_fusion", default="sum", type=str)
+
+    parser.add_argument("--align_weight", default=None, choices=["old", "background", "all"])
+    parser.add_argument(
+        "--align_weight_frequency", default="never", choices=["never", "epoch", "task"]
+    )
+
+    parser.add_argument("--cosine", default=False, action="store_true")
+    parser.add_argument("--nca", default=False, action="store_true")
+    parser.add_argument("--nca_margin", default=0., type=float)
+
+    parser.add_argument("--kd_mask", default=None, choices=["oldbackground", "new"])
+    parser.add_argument("--kd_mask_adaptative_factor", default=False, action="store_true")
+
+    parser.add_argument(
+        "--disable_background",
+        action="store_true",
+        help="Remove the fake background, only for Cityscapes. DEPRECATED TO REMOVE"
+    )
+    parser.add_argument("--ignore_test_bg", action="store_true", default=False)
+
+    parser.add_argument(
+        "--entropy_min",
+        default=0.,
+        type=float,
+        help="Factor for the entropy minimization (cf advent)"
+    )
+    parser.add_argument("--entropy_min_mean_pixels", default=False, action="store_true", help="")
+
+    parser.add_argument("--kd_scheduling", default=False, action="store_true")
+
+    parser.add_argument("--sample_weights_new", default=None, type=float)
+
     return parser
+
+
