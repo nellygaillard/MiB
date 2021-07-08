@@ -88,6 +88,9 @@ class Trainer:
 
         self.entropy_min = opts.entropy_min
 
+        self.ce_on_new = opts.ce_on_new
+        self.kd_scheduling = opts.kd_scheduling
+
     def before(self, train_loader, logger):
         if self.pseudo_labeling is None:
             return
@@ -131,6 +134,7 @@ class Trainer:
         lde = torch.tensor(0.)
         l_icarl = torch.tensor(0.)
         l_reg = torch.tensor(0.)
+        loss_entmin = torch.tensor(0.)
 
         #train_loader.sampler.set_epoch(cur_epoch)
 
@@ -395,8 +399,9 @@ class Trainer:
         histograms = torch.zeros(self.nb_current_classes, nb_bins).long().cuda()
 
         for cur_step, (images, labels) in enumerate(train_loader):
-            images = images.cuda()
-            labels = labels.cuda()
+          
+            images = images.float().cuda()
+            labels = labels.long().cuda()
 
             outputs_old, dictionary = self.model_old(images)
 
@@ -412,18 +417,20 @@ class Trainer:
                 values_to_bins = max_probas[mask_bg].view(-1)
 
             x_coords = pseudo_labels[mask_bg].view(-1)
-            y_coords = torch.clamp((values_to_bins * nb_bins).long(), max=nb_bins - 1)
+            y_coords = torch.clamp((values_to_bins * nb_bins).long(), min=0, max=nb_bins - 1)
 
-            histograms.index_put_(
-                (x_coords, y_coords),
-                torch.LongTensor([1]).expand_as(x_coords).cuda(),
-                accumulate=False
-            )
+            #histograms.index_put_(
+            #    (x_coords, y_coords),
+            #    torch.LongTensor([1]).expand_as(x_coords).to(x_coords.device),
+            #    accumulate=True
+            #)
+
+            histograms[(x_coords, y_coords)] =  torch.LongTensor([1]).expand_as(x_coords).to(histograms.device)
 
             if cur_step % 10 == 0:
                 logger.info(f"Median computing {cur_step}/{len(train_loader)}.")
 
-        thresholds = torch.zeros(self.nb_current_classes, dtype=torch.float32).cuda()  # zeros or ones? If old_model never predict a class it may be important
+        thresholds = torch.zeros(self.nb_current_classes, dtype=torch.float32)  # zeros or ones? If old_model never predict a class it may be important
 
         logger.info("Approximating median")
         for c in range(self.nb_current_classes):
