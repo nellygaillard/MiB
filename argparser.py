@@ -220,7 +220,7 @@ def get_argparser():
         default="current",
         choices=["current", "current+old", "all", "new"]
     )
-    parser.add_argument('--opt_level', type=str, choices=['O0', 'O1', 'O2', 'O3'], default='O0')
+    #parser.add_argument('--opt_level', type=str, choices=['O0', 'O1', 'O2', 'O3'], default='O0')
     parser.add_argument(
         "--pseudo",
         type=str,
@@ -289,6 +289,7 @@ def get_argparser():
     parser.add_argument("--kd_scheduling", default=False, action="store_true")
 
     parser.add_argument("--sample_weights_new", default=None, type=float)
+    parser.add_argument("--ce_on_new", default=False, action="store_true")
 
     return parser
 
