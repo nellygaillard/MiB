@@ -5,7 +5,7 @@ from utils.logger import Logger
 
 # from apex.parallel import DistributedDataParallel
 # from apex import amp
-# from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data.distributed import DistributedSampler
 
 import numpy as np
 import random
@@ -282,6 +282,9 @@ def main(opts):
     # check if random is equal here.
     logger.print(torch.randint(0, 100, (1, 1)))
     # train/val here
+    if TRAIN:
+        trainer.before(train_loader=train_loader, logger=logger)
+
     while cur_epoch < opts.epochs and TRAIN:
         # =====  Train  =====
         model.train()
