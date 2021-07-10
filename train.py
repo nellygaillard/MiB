@@ -14,6 +14,7 @@ class Trainer:
 
         self.model_old = model_old
         self.model = model
+        self.step = opts.step
 
         if classes is not None:
             new_classes = classes[-1]
