@@ -91,12 +91,23 @@ class Trainer:
 
             images = images.cuda()
             labels = labels.cuda().long()
+            
+            original_labels = labels.clone()
+            
             loss_func = torch.nn.CrossEntropyLoss(ignore_index=255)
 
             if (self.lde_flag or self.lkd_flag or self.icarl_dist_flag) and self.model_old is not None:
                 with torch.no_grad():
                     with autocast():
                         outputs_old, empty_dict = self.model_old(images)
+                        
+            #aggiunto da Andrea per pseudo-labeling
+           
+            if self.step > 0:
+                mask_background = labels < self.old_classes
+                labels[mask_background] = outputs_old.argmax(dim=1)[mask_background]
+            
+            #######################################
 
             optim.zero_grad()
             with autocast():
