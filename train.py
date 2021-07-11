@@ -21,7 +21,7 @@ class Trainer:
         self.threshold = opts.threshold
         self.pseudo = opts.pseudo
 
-    if classes is not None:
+        if classes is not None:
             new_classes = classes[-1]
             tot_classes = reduce(lambda a, b: a + b, classes)
             self.old_classes = tot_classes - new_classes
