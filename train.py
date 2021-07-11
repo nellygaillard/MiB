@@ -16,6 +16,10 @@ class Trainer:
         self.model = model
         self.step = opts.step
 
+        # for pseudo labeling
+        self.threshold = opts.threshold
+
+
         if classes is not None:
             new_classes = classes[-1]
             tot_classes = reduce(lambda a, b: a + b, classes)
@@ -68,6 +72,16 @@ class Trainer:
 
         self.ret_intermediate = self.lde
 
+    def entropy(probabilities):
+        """
+        Computes the entropy per pixel.
+        :param probabilities: Tensor of shape (b, c, w, h).
+        :return: One entropy per pixel, shape (b, w, h)
+        """
+        factor = 1 / math.log(probabilities.shape[1] + 1e-8)
+        return -factor * torch.mean(probabilities * torch.log(probabilities + 1e-8), dim=1)     # viene calcolata la media sul batch?
+
+
     def train(self, cur_epoch, optim, train_loader, scheduler=None, print_int=10, logger=None):
         """Train and return epoch loss"""
         logger.info("Epoch %d, lr = %f" % (cur_epoch, optim.param_groups[0]['lr']))
@@ -105,9 +119,18 @@ class Trainer:
             #aggiunto da Andrea per pseudo-labeling
            
             if self.step > 0:
-                mask_background = labels < self.old_classes
-                labels[mask_background] = outputs_old.argmax(dim=1)[mask_background]
-            
+                if opts.pseudo == "naive":
+                    mask_background = labels < self.old_classes     # seleziono solo i labels non corrispondenti alle nuove classi
+                    labels[mask_background] = outputs_old.argmax(dim=1)[mask_background]
+                elif opts.pseudo == "entropy":
+                    mask_background = labels < self.old_classes
+                    probs = torch.softmax(outputs_old, dim=1)           # BxCxWxH
+                    max_probs, pseudo_labels = probs.max(dim=1)         # BxWxH
+                    #mask_valid_pseudo = (entropy(probs) / self.max_entropy) < self.thresholds[pseudo_labels]
+                    mask_valid_pseudo = entropy(probs) < self.thresholds
+                    labels[~mask_valid_pseudo & mask_background] = 255          # put to 255 (?) pixels for which the model is uncertain
+                    labels[mask_valid_pseudo & mask_background] = pseudo_labels[mask_valid_pseudo & mask_background] # use the pseudo-labels for pixels for which the model is confident enough
+
             #######################################
 
             optim.zero_grad()
