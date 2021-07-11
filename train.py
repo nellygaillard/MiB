@@ -15,12 +15,13 @@ class Trainer:
         self.model_old = model_old
         self.model = model
         self.step = opts.step
+        self.pseudo = opts.pseudo
 
         # for pseudo labeling
         self.threshold = opts.threshold
+        self.pseudo = opts.pseudo
 
-
-        if classes is not None:
+    if classes is not None:
             new_classes = classes[-1]
             tot_classes = reduce(lambda a, b: a + b, classes)
             self.old_classes = tot_classes - new_classes
@@ -72,7 +73,7 @@ class Trainer:
 
         self.ret_intermediate = self.lde
 
-    def entropy(probabilities):
+    def entropy(self, probabilities):
         """
         Computes the entropy per pixel.
         :param probabilities: Tensor of shape (b, c, w, h).
@@ -115,21 +116,21 @@ class Trainer:
                 with torch.no_grad():
                     with autocast():
                         outputs_old, empty_dict = self.model_old(images)
-                        
-            #aggiunto da Andrea per pseudo-labeling
-           
-            if self.step > 0:
-                if opts.pseudo == "naive":
-                    mask_background = labels < self.old_classes     # seleziono solo i labels non corrispondenti alle nuove classi
+
+                        # aggiunto da Andrea per pseudo-labeling
+
+            if self.step > 0 and self.pseudo is not None:
+                if self.pseudo == "naive":
+                    mask_background = labels < self.old_classes  # seleziono solo i labels non corrispondenti alle nuove classi
                     labels[mask_background] = outputs_old.argmax(dim=1)[mask_background]
-                elif opts.pseudo == "entropy":
+                elif self.pseudo == "entropy":
                     mask_background = labels < self.old_classes
-                    probs = torch.softmax(outputs_old, dim=1)           # BxCxWxH
-                    max_probs, pseudo_labels = probs.max(dim=1)         # BxWxH
-                    #mask_valid_pseudo = (entropy(probs) / self.max_entropy) < self.thresholds[pseudo_labels]
-                    mask_valid_pseudo = entropy(probs) < self.thresholds
-                    labels[~mask_valid_pseudo & mask_background] = 255          # put to 255 (?) pixels for which the model is uncertain
-                    labels[mask_valid_pseudo & mask_background] = pseudo_labels[mask_valid_pseudo & mask_background] # use the pseudo-labels for pixels for which the model is confident enough
+                    probs = torch.softmax(outputs_old, dim=1)  # BxCxWxH
+                    max_probs, pseudo_labels = probs.max(dim=1)  # BxWxH
+                    mask_valid_pseudo = self.entropy(probs) < self.threshold
+                    labels[~mask_valid_pseudo & mask_background] = 255  # put to 255 (?) pixels for which the model is uncertain
+                    labels[mask_valid_pseudo & mask_background] = pseudo_labels[
+                    mask_valid_pseudo & mask_background]  # use the pseudo-labels for pixels for which the model is confident enough
 
             #######################################
 

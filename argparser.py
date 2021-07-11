@@ -36,6 +36,12 @@ def modify_command_options(opts):
             opts.unce = True
             opts.unkd = True
             opts.init_balanced = True
+        if opts.method == 'pseudoMiB':
+            opts.loss_kd = 100
+            opts.unce = False
+            opts.unkd = True
+            opts.pseudo = 'entropy'
+            opts.threshold = 0.5
 
     opts.no_overlap = not opts.overlap
     opts.no_cross_val = not opts.cross_val
