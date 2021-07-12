@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.cuda.amp import autocast
 from torch.cuda.amp import GradScaler
 from functools import reduce
+import math
 
 from utils.loss import KnowledgeDistillationLoss, BCEWithLogitsLossWithIgnoreIndex, \
     UnbiasedKnowledgeDistillationLoss, UnbiasedCrossEntropy, IcarlLoss
@@ -125,8 +126,8 @@ class Trainer:
                     labels[mask_background] = outputs_old.argmax(dim=1)[mask_background]
                 elif self.pseudo == "entropy":
                     mask_background = labels < self.old_classes
-                    probs = torch.softmax(outputs_old, dim=1)  # BxCxWxH
-                    max_probs, pseudo_labels = probs.max(dim=1)  # BxWxH
+                    probs = torch.softmax(outputs_old, dim=1)       # BxCxWxH
+                    max_probs, pseudo_labels = probs.max(dim=1)     # BxWxH
                     mask_valid_pseudo = self.entropy(probs) < self.threshold
                     labels[~mask_valid_pseudo & mask_background] = 255  # put to 255 (?) pixels for which the model is uncertain
                     labels[mask_valid_pseudo & mask_background] = pseudo_labels[
