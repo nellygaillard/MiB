@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.cuda.amp import autocast
 from torch.cuda.amp import GradScaler
 from functools import reduce
+from dataset import transform
 
 from utils.loss import KnowledgeDistillationLoss, BCEWithLogitsLossWithIgnoreIndex, \
     UnbiasedKnowledgeDistillationLoss, UnbiasedCrossEntropy, IcarlLoss
@@ -82,6 +83,45 @@ class Trainer:
         factor = 1 / math.log(probabilities.shape[1] + 1e-8)
         return -factor * torch.mean(probabilities * torch.log(probabilities + 1e-8), dim=1)     # viene calcolata la media sul batch?
 
+    def test_augmentation(self, images, old_model):
+        masks = []
+        """
+        test_transforms = transform.Compose([
+                transform.RandomHorizontalFlip(),
+                transform.RandomRotation(angles=[0, 180]),
+                transform.Scale(scales=[1, 2, 4]),
+                tranform.Multiply(factors=[0.9, 1, 1.1]),
+            ])
+        """
+        test_transforms = tta.Compose(
+            [
+                tta.HorizontalFlip(),
+                tta.Rotate90(angles=[0, 180]),
+                tta.Scale(scales=[1, 2, 4]),
+                tta.Multiply(factors=[0.9, 1, 1.1]),
+            ]
+        )
+
+        for image in images:
+            for transformer in test_transforms:
+                # augment image
+                augmented_image = transformer.augment_image(image)
+
+                # pass to model
+                outputs_old = old_model(augmented_image)
+                mask = outputs_old.argmax(dim=1)
+
+                # reverse augmentation for mask and label
+                deaug_mask = transformer.deaugment_mask(mask)
+
+                # save results
+                image_masks.append(deaug_mask)
+
+                # reduce results as you want, e.g mean/max/min
+            mask = mean(image_masks)
+
+        masks.append(mask)
+        return masks
 
     def train(self, cur_epoch, optim, train_loader, scheduler=None, print_int=10, logger=None):
         """Train and return epoch loss"""
@@ -117,8 +157,7 @@ class Trainer:
                     with autocast():
                         outputs_old, empty_dict = self.model_old(images)
 
-                        # aggiunto da Andrea per pseudo-labeling
-
+            # pseudo-labeling
             if self.step > 0 and self.pseudo is not None:
                 if self.pseudo == "naive":
                     mask_background = labels < self.old_classes  # seleziono solo i labels non corrispondenti alle nuove classi
@@ -129,8 +168,11 @@ class Trainer:
                     max_probs, pseudo_labels = probs.max(dim=1)  # BxWxH
                     mask_valid_pseudo = self.entropy(probs) < self.threshold
                     labels[~mask_valid_pseudo & mask_background] = 255  # put to 255 (?) pixels for which the model is uncertain
-                    labels[mask_valid_pseudo & mask_background] = pseudo_labels[
-                    mask_valid_pseudo & mask_background]  # use the pseudo-labels for pixels for which the model is confident enough
+                    labels[mask_valid_pseudo & mask_background] = pseudo_labels[mask_valid_pseudo & mask_background]
+                    # use the pseudo-labels for pixels for which the model is confident enough
+                elif self.pseudo == "tta":
+                    mask_background = labels < self.old_classes
+                    labels[mask_background] = self.test_augmentation(images, old_model)[mask_background]
 
             #######################################
 
